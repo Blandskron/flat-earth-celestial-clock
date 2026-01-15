@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Master Geodesic Chronograph v2.0</title>
+    <style>
+        body { 
+            margin: 0; background: #000; height: 100vh; width: 100vw; 
+            overflow: hidden; display: flex; justify-content: center; align-items: center;
+            font-family: 'Segoe UI', 'Courier New', monospace;
+        }
+        #container { 
+            position: relative; width: 100vw; height: 100vh; 
+            background: radial-gradient(circle at center, #1a1f25 0%, #050505 100%); 
+        }
+        canvas { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+        
+        /* Panel de Información Estilo Sci-Fi */
+        #hud {
+            position: absolute; top: 30px; left: 30px; color: #00ffcc;
+            background: rgba(0, 20, 20, 0.7); padding: 20px; 
+            border-left: 5px solid #00ffcc; border-radius: 0 10px 10px 0;
+            backdrop-filter: blur(5px); z-index: 10; box-shadow: 10px 10px 30px rgba(0,0,0,0.5);
+        }
+        .stat { margin-bottom: 10px; font-size: 12px; letter-spacing: 1px; }
+        .stat b { color: #fff; font-size: 14px; }
+        .highlight-blue { color: #00ccff; }
+        .highlight-orange { color: #ffcc00; }
+    </style>
+</head>
+<body>
+
+<div id="container">
+    <div id="hud">
+        <div class="stat">SISTEMA: <b>GEODÉSICO HORARIO</b></div>
+        <div class="stat">PROYECCIÓN: <b>ACIMUTAL 1:1</b></div>
+        <hr style="border:0; border-top:1px solid #333; margin:15px 0;">
+        <div class="stat">SECTOR CHILE: <b class="highlight-blue">UTC -3</b></div>
+        <div class="stat">SECTOR SÍDNEY: <b class="highlight-orange">UTC +11</b></div>
+        <div class="stat">DIFERENCIA (CLOCKWISE): <b style="color:#00ffcc">14 HORAS</b></div>
+        <div class="stat">DIFERENCIA (COUNTER): <b style="color:#ff3300">10 HORAS</b></div>
+    </div>
+    <canvas id="mapCanvas"></canvas>
+    <canvas id="uiCanvas"></canvas>
+</div>
+
+<script>
+    const mCanvas = document.getElementById('mapCanvas');
+    const uCanvas = document.getElementById('uiCanvas');
+    const mCtx = mCanvas.getContext('2d');
+    const uCtx = uCanvas.getContext('2d');
+
+    async function init() {
+        const size = Math.min(window.innerWidth, window.innerHeight) * 0.92;
+        mCanvas.width = uCanvas.width = size;
+        mCanvas.height = uCanvas.height = size;
+
+        try {
+            // Datos GeoJSON reales para evitar distorsiones de Mercator
+            const res = await fetch('https://raw.githubusercontent.com/datasets/geo-boundaries-world-110m/master/countries.geojson');
+            const data = await res.json();
+            render(data);
+        } catch (e) { console.error("Error cargando cartografía", e); }
+    }
+
+    function project(lon, lat, radius) {
+        // SENTIDO HORARIO REAL: Invertimos longitud para que coincida con las manecillas
+        const clockwiseLon = -lon; 
+        const angle = (clockwiseLon * Math.PI / 180) - Math.PI / 2;
+        const dist = ((90 - lat) / 180) * radius;
+        return {
+            x: mCanvas.width / 2 + Math.cos(angle) * dist,
+            y: mCanvas.height / 2 + Math.sin(angle) * dist
+        };
+    }
+
+    function render(geoData) {
+        const radius = mCanvas.width / 2 * 0.88;
+        const cx = mCanvas.width / 2;
+        const cy = mCanvas.height / 2;
+
+        mCtx.clearRect(0, 0, mCanvas.width, mCanvas.height);
+
+        // Efecto Atmósfera / Brillo exterior
+        const glow = mCtx.createRadialGradient(cx, cy, radius, cx, cy, radius + 20);
+        glow.addColorStop(0, 'rgba(0, 255, 204, 0.2)');
+        glow.addColorStop(1, 'transparent');
+        mCtx.fillStyle = glow;
+        mCtx.fillRect(0, 0, mCanvas.width, mCanvas.height);
+
+        // Dibujo de Tierras
+        mCtx.fillStyle = "#12151a";
+        mCtx.strokeStyle = "rgba(0, 255, 204, 0.4)";
+        mCtx.lineWidth = 0.8;
+
+        geoData.features.forEach(feature => {
+            const draw = (coords) => {
+                mCtx.beginPath();
+                coords.forEach((pt, i) => {
+                    const p = project(pt[0], pt[1], radius);
+                    if (i === 0) mCtx.moveTo(p.x, p.y);
+                    else mCtx.lineTo(p.x, p.y);
+                });
+                mCtx.fill(); mCtx.stroke();
+            };
+            if (feature.geometry.type === "Polygon") draw(feature.geometry.coordinates[0]);
+            else if (feature.geometry.type === "MultiPolygon") feature.geometry.coordinates.forEach(p => draw(p[0]));
+        });
+
+        drawEnhancedUI(radius);
+    }
+
+    function drawEnhancedUI(radius) {
+        const cx = uCanvas.width / 2;
+        const cy = uCanvas.height / 2;
+        uCtx.clearRect(0, 0, uCanvas.width, uCanvas.height);
+
+        // Bisel del Cronógrafo
+        uCtx.beginPath();
+        uCtx.arc(cx, cy, radius + 5, 0, Math.PI * 2);
+        uCtx.strokeStyle = "#00ffcc";
+        uCtx.lineWidth = 2;
+        uCtx.stroke();
+
+        // Marcadores de 24 Horas
+        for (let i = 0; i < 24; i++) {
+            const angle = (i * Math.PI / 12) - Math.PI / 2;
+            const outerPoint = radius + 10;
+            const innerPoint = radius - (i % 6 === 0 ? 20 : 10);
+
+            uCtx.beginPath();
+            uCtx.moveTo(cx + Math.cos(angle) * innerPoint, cy + Math.sin(angle) * innerPoint);
+            uCtx.lineTo(cx + Math.cos(angle) * outerPoint, cy + Math.sin(angle) * outerPoint);
+            uCtx.strokeStyle = i % 6 === 0 ? "#00ffcc" : "rgba(0, 255, 204, 0.3)";
+            uCtx.lineWidth = i % 6 === 0 ? 3 : 1;
+            uCtx.stroke();
+
+            // Etiquetas
+            uCtx.fillStyle = i === 0 ? "#fff" : "#00ffcc";
+            uCtx.font = i % 6 === 0 ? "bold 14px Segoe UI" : "10px Segoe UI";
+            const labelR = radius + 35;
+            let val = i <= 12 ? i : i - 24;
+            let label = i === 0 ? "UTC" : (val > 0 ? `+${val}` : val);
+            uCtx.textAlign = "center";
+            uCtx.textBaseline = "middle";
+            uCtx.fillText(label, cx + Math.cos(angle) * labelR, cy + Math.sin(angle) * labelR);
+        }
+
+        // RESALTADO CHILE Y SÍDNEY
+        const angChile = (-3 * Math.PI / 12) - Math.PI / 2;
+        const angSydney = (11 * Math.PI / 12) - Math.PI / 2;
+
+        // Arcos de diferencia temporal
+        uCtx.lineWidth = 8;
+        uCtx.lineCap = "round";
+        
+        // 14h (Horario)
+        uCtx.beginPath();
+        uCtx.arc(cx, cy, radius + 15, angChile, angSydney, false);
+        uCtx.strokeStyle = "rgba(0, 204, 255, 0.4)";
+        uCtx.stroke();
+
+        // 10h (Pacífico)
+        uCtx.beginPath();
+        uCtx.arc(cx, cy, radius + 15, angChile, angSydney, true);
+        uCtx.strokeStyle = "rgba(255, 51, 0, 0.4)";
+        uCtx.stroke();
+
+        mark(-70.6, -33.4, -3, "#00ccff", "CHILE (UTC-3)");
+        mark(151.2, -33.8, 11, "#ffcc00", "SÍDNEY (UTC+11)");
+    }
+
+    function mark(lon, lat, utc, color, name) {
+        const radius = mCanvas.width / 2 * 0.88;
+        const p = project(lon, lat, radius);
+        const angle = (utc * Math.PI / 12) - Math.PI / 2;
+
+        uCtx.beginPath();
+        uCtx.arc(p.x, p.y, 8, 0, Math.PI * 2);
+        uCtx.fillStyle = color;
+        uCtx.shadowBlur = 15; uCtx.shadowColor = color;
+        uCtx.fill(); uCtx.shadowBlur = 0;
+
+        uCtx.beginPath();
+        uCtx.moveTo(p.x, p.y);
+        uCtx.lineTo(uCanvas.width/2 + Math.cos(angle)*radius, uCanvas.height/2 + Math.sin(angle)*radius);
+        uCtx.strokeStyle = color;
+        uCtx.lineWidth = 2;
+        uCtx.stroke();
+
+        uCtx.fillStyle = "#fff";
+        uCtx.font = "bold 13px Segoe UI";
+        uCtx.textAlign = "center";
+        uCtx.fillText(name, p.x, p.y - 18);
+    }
+
+    window.onresize = init;
+    init();
+</script>
+</body>
+</html>
