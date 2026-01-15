@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Cronógrafo Geodésico - Sistema B & Mecánica Orbital</title>
+    <style>
+        :root { --neon: #00ffcc; --chile: #00ccff; --sydney: #ffcc00; --bg: #050505; }
+        body { margin: 0; background: #000; color: var(--neon); font-family: 'Courier New', monospace; display: flex; height: 100vh; overflow: hidden; }
+        
+        /* Layout Principal */
+        #main-viz { flex: 1; display: flex; flex-direction: column; border-right: 1px solid #222; }
+        #canvas-top { flex: 2; position: relative; background: radial-gradient(circle, #0d1117 0%, #000 100%); }
+        #bottom-panels { flex: 0.8; display: flex; background: #080808; border-top: 1px solid #222; }
+        
+        /* Paneles Inferiores */
+        .panel { flex: 1; border-right: 1px solid #222; position: relative; display: flex; justify-content: center; align-items: center; }
+        canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+        
+        /* HUD y Tablas */
+        #hud { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.85); padding: 15px; border-left: 3px solid var(--neon); z-index: 100; backdrop-filter: blur(10px); }
+        #sidebar { width: 350px; background: #0a0a0a; padding: 20px; border-left: 1px solid #222; display: flex; flex-direction: column; }
+        
+        .date { font-size: 18px; color: #fff; display: block; margin-bottom: 10px; }
+        .stat-table { width: 100%; border-collapse: collapse; font-size: 11px; color: #888; margin-top: 10px; }
+        .stat-table th { text-align: left; border-bottom: 1px solid #222; padding: 5px; color: var(--neon); }
+        .stat-table td { padding: 8px 5px; border-bottom: 1px solid #111; }
+        
+        .panel-title { position: absolute; top: 8px; font-size: 9px; color: #444; text-transform: uppercase; letter-spacing: 2px; font-weight: bold; }
+        .marker-label { font-size: 10px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div id="hud">
+    <span class="date" id="date-text">Sincronizando...</span>
+    <small style="color: #666;">CALIBRACIÓN: <span style="color:white">SISTEMA B</span></small>
+</div>
+
+<div id="main-viz">
+    <div id="canvas-top">
+        <canvas id="mapCanvas"></canvas>
+        <canvas id="uiCanvas"></canvas>
+    </div>
+    <div id="bottom-panels">
+        <div class="panel"><span class="panel-title">Analema Solar (Z-Offset)</span><canvas id="canvasAnalemma"></canvas></div>
+        <div class="panel"><span class="panel-title">Fase Sinódica Lunar</span><canvas id="canvasMoonPhase"></canvas></div>
+    </div>
+</div>
+
+<div id="sidebar">
+    <h3 style="font-size:12px; letter-spacing:2px; color:var(--neon); border-bottom:1px solid #333; padding-bottom:10px;">ANCLAJES GEODÉSICOS</h3>
+    <table class="stat-table">
+        <thead>
+            <tr><th>LOCALIZACIÓN</th><th>UTC</th><th>SISTEMA B</th></tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><span style="color:var(--chile)">●</span> SANTIAGO</td>
+                <td>-3</td>
+                <td style="color:white">+5</td>
+            </tr>
+            <tr>
+                <td><span style="color:var(--sydney)">●</span> SÍDNEY</td>
+                <td>+11</td>
+                <td style="color:white">-9</td>
+            </tr>
+            <tr>
+                <td><span style="color:var(--neon)">●</span> LONDRES</td>
+                <td>0</td>
+                <td style="color:white">+2</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h3 style="font-size:12px; letter-spacing:2px; color:var(--neon); border-bottom:1px solid #333; padding-bottom:10px; margin-top:30px;">ESTADO CELESTIAL</h3>
+    <div id="celestial-log" style="font-size:10px; color:#666; line-height:1.6;">
+        Oblicuidad: 23.44°<br>
+        Excentricidad: 0.0167<br>
+        Referencia: J2000.0
+    </div>
+</div>
+
+<script>
+const mCanvas = document.getElementById('mapCanvas'), uCanvas = document.getElementById('uiCanvas');
+const cAnale = document.getElementById('canvasAnalemma'), cPhase = document.getElementById('canvasMoonPhase');
+const mCtx = mCanvas.getContext('2d'), uCtx = uCanvas.getContext('2d');
+const ctxA = cAnale.getContext('2d'), ctxP = cPhase.getContext('2d');
+
+let worldData = null;
+const START_SIM = new Date("2026-01-15T01:55:00Z").getTime();
+let days = 0, speed = 0.0001; // Velocidad de simulación
+
+// Constantes astronómicas
+const YEAR_DAYS = 365.242, SYNODIC_MONTH = 29.5305;
+const mapB = {
+    0: "+2", 1: "+1", 2: "0", 3: "-1", 4: "-2", 5: "-3", 6: "-4", 7: "-5", 8: "-6", 9: "-7", 10: "-8", 11: "-9", 12: "-10",
+    "-11": "-11", "-10": "+12", "-9": "+11", "-8": "+10", "-7": "+9", "-6": "+8", "-5": "+7", "-4": "+6", "-3": "+5", "-2": "+4", "-1": "+3"
+};
+
+async function loadGeoData() {
+    const res = await fetch('https://raw.githubusercontent.com/datasets/geo-boundaries-world-110m/master/countries.geojson');
+    worldData = await res.json();
+}
+
+function resize() {
+    [mCanvas, uCanvas, cAnale, cPhase].forEach(c => {
+        c.width = c.parentElement.clientWidth;
+        c.height = c.parentElement.clientHeight;
+    });
+}
+
+function project(lon, lat, radius) {
+    const angle = (-lon * Math.PI / 180) - Math.PI / 2;
+    const dist = ((90 - lat) / 180) * radius;
+    return { x: mCanvas.width / 2 + Math.cos(angle) * dist, y: mCanvas.height / 2 + Math.sin(angle) * dist };
+}
+
+function analemmaHeight(yearFrac) {
+    return (0.25 * Math.sin(2 * Math.PI * yearFrac) + 0.08 * Math.sin(4 * Math.PI * yearFrac));
+}
+
+function draw() {
+    mCtx.clearRect(0,0,mCanvas.width, mCanvas.height);
+    uCtx.clearRect(0,0,uCanvas.width, uCanvas.height);
+    ctxA.clearRect(0,0,cAnale.width, cAnale.height);
+    ctxP.clearRect(0,0,cPhase.width, cPhase.height);
+
+    days += speed;
+    const tMillis = START_SIM + (days * 86400000);
+    const curDate = new Date(tMillis);
+    const yearFrac = (days % YEAR_DAYS) / YEAR_DAYS;
+    const lunarFrac = (days % SYNODIC_MONTH) / SYNODIC_MONTH;
+    
+    document.getElementById('date-text').innerText = curDate.toUTCString().substring(0,25);
+
+    const cx = mCanvas.width / 2, cy = mCanvas.height / 2;
+    const radius = Math.min(cx, cy) * 0.85;
+
+    // 1. MAPA Y ANCLAJES (PUNTITOS)
+    if(worldData) {
+        mCtx.fillStyle = "#0a0d12"; mCtx.beginPath(); mCtx.arc(cx, cy, radius, 0, Math.PI*2); mCtx.fill();
+        mCtx.fillStyle = "#161b22"; mCtx.strokeStyle = "rgba(0, 255, 204, 0.15)";
+        worldData.features.forEach(f => {
+            const drawPath = (coords) => {
+                mCtx.beginPath();
+                coords.forEach((pt, i) => {
+                    const p = project(pt[0], pt[1], radius);
+                    if(i===0) mCtx.moveTo(p.x, p.y); else mCtx.lineTo(p.x, p.y);
+                });
+                mCtx.fill(); mCtx.stroke();
+            };
+            if (f.geometry.type === "Polygon") drawPath(f.geometry.coordinates[0]);
+            else if (f.geometry.type === "MultiPolygon") f.geometry.coordinates.forEach(poly => drawPath(poly[0]));
+        });
+
+        // Puntos fijos de Santiago y Sydney
+        const pChile = project(-70.6, -33.4, radius);
+        const pSydney = project(151.2, -33.8, radius);
+        
+        mCtx.fillStyle = "#00ccff"; mCtx.beginPath(); mCtx.arc(pChile.x, pChile.y, 4, 0, Math.PI*2); mCtx.fill();
+        mCtx.fillStyle = "#ffcc00"; mCtx.beginPath(); mCtx.arc(pSydney.x, pSydney.y, 4, 0, Math.PI*2); mCtx.fill();
+    }
+
+    // 2. DIAL SISTEMA B
+    uCtx.save();
+    uCtx.translate(cx, cy);
+    for (let i = 0; i < 24; i++) {
+        const angle = (i * Math.PI / 12) - Math.PI / 2;
+        uCtx.strokeStyle = i === 0 ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.05)";
+        uCtx.beginPath(); uCtx.moveTo(Math.cos(angle)*radius, Math.sin(angle)*radius);
+        uCtx.lineTo(Math.cos(angle)*(radius+10), Math.sin(angle)*(radius+10)); uCtx.stroke();
+        
+        let valA = i <= 12 ? i : i - 24;
+        uCtx.fillStyle = (valA === -3 || valA === 11) ? "#fff" : "#444";
+        uCtx.font = "9px Arial";
+        uCtx.textAlign = "center";
+        uCtx.fillText(mapB[valA], Math.cos(angle)*(radius+22), Math.sin(angle)*(radius+22));
+    }
+
+    // 3. MECÁNICA ORBITAL (SOL Y LUNA)
+    const hourUTC = curDate.getUTCHours() + curDate.getUTCMinutes()/60;
+    const sAng = (hourUTC * Math.PI / 12) - Math.PI / 2;
+    const zOffset = analemmaHeight(yearFrac);
+    
+    // Sol dinámico
+    const sunDist = radius * (0.6 + zOffset);
+    uCtx.fillStyle = "#ffcc00"; uCtx.shadowBlur = 15; uCtx.shadowColor = "#ffcc00";
+    uCtx.beginPath(); uCtx.arc(Math.cos(sAng)*sunDist, Math.sin(sAng)*sunDist, 6, 0, Math.PI*2); uCtx.fill();
+    
+    // Luna dinámica (orbita al sol en este modelo visual)
+    const mAng = sAng - (lunarFrac * 2 * Math.PI);
+    uCtx.shadowBlur = 10; uCtx.shadowColor = "#fff"; uCtx.fillStyle = "#fff";
+    uCtx.beginPath(); uCtx.arc(Math.cos(mAng)*sunDist, Math.sin(mAng)*sunDist, 3.5, 0, Math.PI*2); uCtx.fill();
+    uCtx.restore();
+
+    // 4. PANELES DE COMPLICACIÓN (Analema y Fase)
+    const cxA = cAnale.width/2, cyA = cAnale.height/2;
+    ctxA.strokeStyle = "#222"; ctxA.beginPath();
+    for(let i=0; i<360; i++) {
+        let f = i/360; ctxA.lineTo(cxA + Math.sin(2*Math.PI*f)*30, cyA - analemmaHeight(f)*120);
+    }
+    ctxA.stroke();
+    ctxA.fillStyle = "#ffcc00"; ctxA.beginPath();
+    ctxA.arc(cxA + Math.sin(2*Math.PI*yearFrac)*30, cyA - zOffset*120, 4, 0, Math.PI*2); ctxA.fill();
+
+    // Fase Lunar
+    const cxP = cPhase.width/2, cyP = cPhase.height/2, rP = 35;
+    ctxP.fillStyle = "#fff";
+    let s = Math.cos(lunarFrac * 2 * Math.PI);
+    ctxP.save(); ctxP.beginPath(); ctxP.arc(cxP, cyP, rP, 0, Math.PI*2); ctxP.clip();
+    for(let i = -rP; i < rP; i++) {
+        let h = Math.sqrt(rP*rP - i*i), x2 = i * s;
+        if (lunarFrac < 0.5) { if (i > x2) ctxP.fillRect(cxP + x2, cyP - h, i - x2, h * 2); }
+        else { if (i < x2) ctxP.fillRect(cxP + i, cyP - h, x2 - i, h * 2); }
+    }
+    ctxP.restore();
+
+    requestAnimationFrame(draw);
+}
+
+window.addEventListener('resize', resize);
+loadGeoData().then(() => { resize(); draw(); });
+</script>
+</body>
+</html>
