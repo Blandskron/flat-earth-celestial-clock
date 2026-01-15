@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>PlanarCelestialSystem - Grand Complication v1.5</title>
+    <style>
+        body { margin: 0; background: #000; color: #00ffcc; font-family: 'Courier New', monospace; display: flex; height: 100vh; overflow: hidden; }
+        #main-viz { flex: 1; display: flex; flex-direction: column; border-right: 1px solid #222; }
+        #canvas-top { flex: 2; position: relative; display: flex; align-items: center; justify-content: center; border-bottom: 1px solid #222; }
+        #bottom-panels { flex: 1; display: flex; }
+        .panel { flex: 1; border-right: 1px solid #222; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #050505; }
+        canvas { background: #000; }
+        #sidebar { width: 420px; background: #0a0a0a; padding: 15px; overflow-y: auto; border-left: 1px solid #222; }
+        
+        #ui-overlay { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.9); padding: 15px; border-left: 3px solid #00ffcc; z-index: 10; }
+        .date { font-size: 22px; color: #fff; display: block; margin-bottom: 5px; }
+        
+        /* Estética de Log de Alta Relojería */
+        .log-entry { font-size: 11px; padding: 10px; border-bottom: 1px solid #222; background: #0d0d0d; margin-bottom: 5px; border-radius: 2px; }
+        .log-header { display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 4px; }
+        .log-details { font-size: 10px; color: #888; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; border-top: 1px solid #1a1a1a; pt: 4px; }
+        .solar { color: #ffcc33; border-left: 3px solid #ffcc33; } 
+        .lunar { color: #aa88ff; border-left: 3px solid #aa88ff; }
+        
+        .panel-title { position: absolute; top: 8px; font-size: 10px; color: #555; text-transform: uppercase; letter-spacing: 2px; }
+        #csv-btn { margin-top: 15px; background: #00ffcc; color: #000; border: none; padding: 8px 12px; cursor: pointer; font-family: monospace; font-weight: bold; width: 100%; }
+    </style>
+</head>
+<body>
+
+<div id="ui-overlay">
+    <span class="date" id="date-text">2026-01-13</span>
+    <small>COMPLICACIÓN: <span style="color:white">Celestial Chronograph</span></small>
+</div>
+
+<div id="main-viz">
+    <div id="canvas-top">
+        <span class="panel-title">Dial Maestro de Zonas Horarias</span>
+        <canvas id="canvasOrbit"></canvas>
+    </div>
+    <div id="bottom-panels">
+        <div class="panel">
+            <span class="panel-title">Analema (Z)</span>
+            <canvas id="canvasAnalemma"></canvas>
+        </div>
+        <div class="panel">
+            <span class="panel-title">Fase Sinódica</span>
+            <canvas id="canvasMoonPhase"></canvas>
+        </div>
+    </div>
+</div>
+
+<div id="sidebar">
+    <h3 style="font-size:14px; color:#00ffcc; border-bottom:1px solid #333; margin: 0 0 10px 0; padding-bottom: 10px;">CRONOMETRÍA DE EVENTOS</h3>
+    <div id="log"></div>
+    <button id="csv-btn" onclick="downloadCSV()">DESCARGAR CRONOGRAMA</button>
+</div>
+
+<script>
+const cOrbit = document.getElementById('canvasOrbit'), cAnale = document.getElementById('canvasAnalemma'), cPhase = document.getElementById('canvasMoonPhase');
+const ctxO = cOrbit.getContext('2d'), ctxA = cAnale.getContext('2d'), ctxP = cPhase.getContext('2d');
+
+function resize() {
+    [cOrbit, cAnale, cPhase].forEach(c => {
+        c.width = c.parentElement.clientWidth;
+        c.height = c.parentElement.clientHeight;
+    });
+}
+window.addEventListener('resize', resize);
+resize();
+
+const YEAR_DAYS = 365.242189, SYNODIC_MONTH = 29.53058885, ECLIPSE_YEAR = 346.620075;
+const PHASE_TOL = 0.006, NODE_TOL = 0.045;
+const EPOCH = new Date(2000, 0, 1, 12, 0).getTime();
+const REF_DATE = new Date(2026, 1, 17, 12, 0).getTime();
+const START_SIM = new Date(2026, 0, 13).getTime();
+
+let days = 0, speed = 0.02, lastE = "", eclipseList = [];
+
+function frac(x) { return x - Math.floor(x); }
+function analemmaHeight(yearFrac) {
+    return (0.25 * Math.sin(2 * Math.PI * yearFrac) + 0.08 * Math.sin(4 * Math.PI * yearFrac) + 0.03 * Math.sin(6 * Math.PI * yearFrac));
+}
+
+function draw() {
+    [ctxO, ctxA, ctxP].forEach(ctx => { ctx.fillStyle = "black"; ctx.fillRect(0,0,ctx.canvas.width, ctx.canvas.height); });
+
+    days += speed;
+    const tMillis = START_SIM + (days * 86400000);
+    const dRef = (tMillis - REF_DATE) / 86400000;
+    const dEp = (tMillis - EPOCH) / 86400000;
+
+    const yearFrac = frac(dEp / YEAR_DAYS), synPhase = frac(dRef / SYNODIC_MONTH), nodeSync = frac(dRef / ECLIPSE_YEAR);
+    const distNode = Math.min(nodeSync, 1 - nodeSync, Math.abs(nodeSync - 0.5));
+
+    let curDate = new Date(tMillis);
+    const dStr = curDate.toISOString().split('T')[0];
+    const timeStr = curDate.toISOString().split('T')[1].substring(0, 5);
+    document.getElementById('date-text').innerText = `${dStr} ${timeStr} UTC`;
+
+    const cx = cOrbit.width/2, cy = cOrbit.height/2, ringRadius = 180;
+
+    // Dial de Zonas UTC
+    for(let i = -12; i <= 11; i++) {
+        let angle = (i / 24) * 2 * Math.PI + Math.PI/2;
+        ctxO.strokeStyle = i === 0 ? "#00ffcc" : "#222";
+        ctxO.beginPath();
+        ctxO.moveTo(cx + Math.cos(angle)*ringRadius, cy + Math.sin(angle)*ringRadius);
+        ctxO.lineTo(cx + Math.cos(angle)*(ringRadius+8), cy + Math.sin(angle)*(ringRadius+8));
+        ctxO.stroke();
+    }
+
+    const sAng = (( (curDate.getUTCHours() + curDate.getUTCMinutes()/60) - 12) / 24) * 2 * Math.PI + Math.PI/2;
+    const z_s = analemmaHeight(yearFrac), sunR = ringRadius - 40 + (z_s * 50);
+    const sx = cx + Math.cos(sAng)*sunR, sy = cy + Math.sin(sAng)*sunR;
+    const mAng = sAng - (synPhase * 2 * Math.PI);
+    const mx = cx + Math.cos(mAng)*sunR, my = cy + Math.sin(mAng)*sunR;
+
+    // DETECCIÓN CON CRONOMETRÍA DE FASES
+    const isNew = (synPhase < PHASE_TOL || synPhase > (1 - PHASE_TOL));
+    const isFull = Math.abs(synPhase - 0.5) < PHASE_TOL;
+
+    if (distNode <= NODE_TOL) {
+        let type = "", sub = "";
+        if (isNew) { type = "SOLAR"; sub = distNode < 0.011 ? "Annular" : (distNode < 0.028 ? "Total" : "Partial"); }
+        else if (isFull) { type = "LUNAR"; sub = distNode < 0.016 ? "Total" : (distNode < 0.036 ? "Partial" : "Penumbral"); }
+
+        if (type && lastE !== dStr + type) {
+            // Cálculo de Complicación: Tiempos estimados de contacto
+            const durationMins = 120 + (Math.random() * 60); // Simulación de ventana de eclipse
+            const startT = new Date(tMillis - (durationMins/2 * 60000)).toISOString().split('T')[1].substring(0,5);
+            const endT = new Date(tMillis + (durationMins/2 * 60000)).toISOString().split('T')[1].substring(0,5);
+
+            const div = document.createElement('div');
+            div.className = `log-entry ${type.toLowerCase()}`;
+            div.innerHTML = `
+                <div class="log-header"><span>${dStr}</span> <span>${type} ${sub}</span></div>
+                <div class="log-details">
+                    <span>INICIO: ${startT}</span>
+                    <span style="color:#fff">MÁX: ${timeStr}</span>
+                    <span>FIN: ${endT}</span>
+                </div>`;
+            document.getElementById('log').prepend(div);
+            eclipseList.push({date: dStr, type: type, sub: sub, peak: timeStr});
+            lastE = dStr + type;
+        }
+        ctxO.strokeStyle = "rgba(0,255,200,0.3)"; ctxO.beginPath(); ctxO.moveTo(sx,sy); ctxO.lineTo(mx,my); ctxO.stroke();
+    }
+
+    // Dibujo
+    ctxO.fillStyle = "#ffcc33"; ctxO.beginPath(); ctxO.arc(sx, sy, 5, 0, Math.PI*2); ctxO.fill();
+    ctxO.fillStyle = "#fff"; ctxO.beginPath(); ctxO.arc(mx, my, 4, 0, Math.PI*2); ctxO.fill();
+    
+    // Analema y Fase Lunar (igual que versión anterior pero optimizado)
+    const cxA = cAnale.width/2, cyA = cAnale.height/2;
+    ctxA.beginPath(); ctxA.strokeStyle = "#1a1a1a";
+    for(let i=0; i<360; i++) {
+        let f = i/360; ctxA.lineTo(cxA + Math.sin(2*Math.PI*f)*20, cyA - analemmaHeight(f)*150);
+    }
+    ctxA.stroke();
+    ctxA.fillStyle = "#ffcc33"; ctxO.shadowBlur = 0;
+    ctxA.beginPath(); ctxA.arc(cxA + Math.sin(2*Math.PI*yearFrac)*20, cyA - z_s * 150, 3, 0, Math.PI*2); ctxA.fill();
+
+    const cxP = cPhase.width/2, cyP = cPhase.height/2, rP = 30;
+    ctxP.fillStyle = "#fff";
+    let s = Math.cos(synPhase * 2 * Math.PI);
+    for(let i = -rP; i < rP; i++) {
+        let h = Math.sqrt(rP*rP - i*i), x2 = i * s;
+        if (synPhase < 0.5) { if (i > x2) ctxP.fillRect(cxP + x2, cyP - h, i - x2, h * 2); }
+        else { if (i < x2) ctxP.fillRect(cxP + i, cyP - h, x2 - i, h * 2); }
+    }
+
+    requestAnimationFrame(draw);
+}
+
+function downloadCSV() {
+    let csv = "FECHA,TIPO,SUBTIPO,HORA_PICO_UTC\n";
+    eclipseList.forEach(e => { csv += `${e.date},${e.type},${e.sub},${e.peak}\n`; });
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'cronometro_celestial.csv'; a.click();
+}
+
+draw();
+</script>
+</body>
+</html>
