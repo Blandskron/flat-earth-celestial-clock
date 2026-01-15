@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>PlanarCelestialSystem.io - Engine v1.0</title>
+     <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-XS616SHMD7"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+    
+      gtag('config', 'G-XS616SHMD7');
+    </script>
+    
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-0HTRJHD9N0"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+    
+      gtag('config', 'G-0HTRJHD9N0');
+    </script>
+
+    <script type="text/javascript">
+        (function(c,l,a,r,i,t,y){
+            c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+            t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+            y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+        })(window, document, "clarity", "script", "u59txxo2oo");
+    </script>
+    <style>
+        body { margin: 0; background: #000; color: #00ffcc; font-family: 'Courier New', monospace; display: flex; height: 100vh; overflow: hidden; }
+        #main-viz { flex: 1; display: flex; flex-direction: column; border-right: 1px solid #222; }
+        #canvas-top { flex: 2; position: relative; display: flex; align-items: center; justify-content: center; border-bottom: 1px solid #222; }
+        #bottom-panels { flex: 1; display: flex; }
+        .panel { flex: 1; border-right: 1px solid #222; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #050505; }
+        canvas { background: #000; }
+        #sidebar { width: 380px; background: #0a0a0a; padding: 15px; overflow-y: auto; }
+        #ui-overlay { position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.9); padding: 12px; border: 1px solid #333; pointer-events: none; z-index: 10; }
+        .panel-title { position: absolute; top: 8px; font-size: 10px; color: #555; text-transform: uppercase; letter-spacing: 2px; }
+        .log-entry { font-size: 11px; padding: 6px 0; border-bottom: 1px solid #111; display: flex; justify-content: space-between; font-weight: bold; }
+        .solar { color: #ffcc33; } .lunar { color: #aa88ff; }
+        .date { font-size: 20px; color: #fff; display: block; margin-bottom: 5px; }
+        #csv-btn { margin-top: 10px; background: #00ffcc; color: #000; border: none; padding: 5px 10px; cursor: pointer; font-family: monospace; font-weight: bold; pointer-events: auto; }
+    </style>
+</head>
+<body>
+
+<div id="ui-overlay">
+    <span class="date" id="date-text">2026-01-13</span>
+    <small>ENGINE: <span style="color:white">Planar Precision</span></small><br>
+    <button id="csv-btn" onclick="downloadCSV()">DESCARGAR CSV</button>
+</div>
+
+<div id="main-viz">
+    <div id="canvas-top">
+        <span class="panel-title">Trayectorias y Nodos</span>
+        <canvas id="canvasOrbit"></canvas>
+    </div>
+    <div id="bottom-panels">
+        <div class="panel">
+            <span class="panel-title">Analema Solar (Z)</span>
+            <canvas id="canvasAnalemma"></canvas>
+        </div>
+        <div class="panel">
+            <span class="panel-title">Fase Sin贸dica</span>
+            <canvas id="canvasMoonPhase"></canvas>
+        </div>
+    </div>
+</div>
+
+<div id="sidebar">
+    <h3 style="font-size:14px; color:#00ffcc; border-bottom:1px solid #333; margin: 0 0 10px 0; padding-bottom: 10px;">HISTORIAL DE ECLIPSES</h3>
+    <div id="log"></div>
+</div>
+
+<script>
+const cOrbit = document.getElementById('canvasOrbit'), cAnale = document.getElementById('canvasAnalemma'), cPhase = document.getElementById('canvasMoonPhase');
+const ctxO = cOrbit.getContext('2d'), ctxA = cAnale.getContext('2d'), ctxP = cPhase.getContext('2d');
+
+function resize() {
+    [cOrbit, cAnale, cPhase].forEach(c => {
+        c.width = c.parentElement.clientWidth;
+        c.height = c.parentElement.clientHeight;
+    });
+}
+window.addEventListener('resize', resize);
+resize();
+
+// --- CONSTANTES DE TU MODELO PYTHON ---
+const YEAR_DAYS = 365.242189;
+const SYNODIC_MONTH = 29.53058885;
+const ECLIPSE_YEAR = 346.620075;
+const PHASE_TOL = 0.006;
+const NODE_TOL = 0.045;
+
+const EPOCH = new Date(2000, 0, 1, 12, 0).getTime();
+const REF_DATE = new Date(2026, 1, 17, 12, 0).getTime();
+const START_SIM = new Date(2026, 0, 13).getTime();
+
+let days = 0;
+const speed = 0.02; 
+let lastE = "";
+let eclipseList = [];
+
+function frac(x) { return x - Math.floor(x); }
+
+function analemmaHeight(yearFrac) {
+    return (
+        0.25 * Math.sin(2 * Math.PI * yearFrac) +
+        0.08 * Math.sin(4 * Math.PI * yearFrac) +
+        0.03 * Math.sin(6 * Math.PI * yearFrac)
+    );
+}
+
+function getGeometry(dSinceStart) {
+    const tMillis = START_SIM + (dSinceStart * 86400000);
+    const dRef = (tMillis - REF_DATE) / 86400000;
+    const dEp = (tMillis - EPOCH) / 86400000;
+
+    const yearFrac = frac(dEp / YEAR_DAYS);
+    const synPhase = frac(dRef / SYNODIC_MONTH);
+    const nodeSync = frac(dRef / ECLIPSE_YEAR);
+    
+    const distNode = Math.min(nodeSync, 1 - nodeSync, Math.abs(nodeSync - 0.5));
+    return { synPhase, distNode, yearFrac };
+}
+
+function draw() {
+    [ctxO, ctxA, ctxP].forEach(ctx => { ctx.fillStyle = "black"; ctx.fillRect(0,0,ctx.canvas.width, ctx.canvas.height); });
+
+    days += speed;
+    const geo = getGeometry(days);
+    const z_s = analemmaHeight(geo.yearFrac);
+
+    let curDate = new Date(START_SIM + (days * 86400000));
+    const dStr = curDate.toISOString().split('T')[0];
+    document.getElementById('date-text').innerText = dStr;
+
+    // PANEL 1: ORBITAS
+    const cxO = cOrbit.width/2, cyO = cOrbit.height/2;
+    const sAng = days * 2 * Math.PI, sunR = 140 + (z_s * 110);
+    const sx = cxO + Math.cos(sAng)*sunR, sy = cyO + Math.sin(sAng)*sunR;
+    const mAng = sAng - (geo.synPhase * 2 * Math.PI);
+    const mx = cxO + Math.cos(mAng)*sunR, my = cyO + Math.sin(mAng)*sunR;
+
+    ctxO.fillStyle = "#ffcc33"; ctxO.beginPath(); ctxO.arc(sx, sy, 5, 0, Math.PI*2); ctxO.fill();
+    ctxO.fillStyle = "#fff"; ctxO.beginPath(); ctxO.arc(mx, my, 4, 0, Math.PI*2); ctxO.fill();
+
+    // DETECCI脫N FIEL A PYTHON
+    const isNew = (geo.synPhase < PHASE_TOL || geo.synPhase > (1 - PHASE_TOL));
+    const isFull = Math.abs(geo.synPhase - 0.5) < PHASE_TOL;
+
+    if (geo.distNode <= NODE_TOL) {
+        let type = "", sub = "";
+        if (isNew) {
+            type = "SOLAR";
+            sub = geo.distNode < 0.011 ? "Annular" : (geo.distNode < 0.028 ? "Total" : "Partial");
+        } else if (isFull) {
+            type = "LUNAR";
+            sub = geo.distNode < 0.016 ? "Total" : (geo.distNode < 0.036 ? "Partial" : "Penumbral");
+        }
+
+        if (type && lastE !== dStr + type) {
+            const div = document.createElement('div'); div.className = 'log-entry ' + type.toLowerCase();
+            div.innerHTML = `<span>${dStr}</span> <span>${type}</span> <span>${sub}</span>`;
+            document.getElementById('log').prepend(div);
+            eclipseList.push({date: dStr, type: type, subtype: sub});
+            lastE = dStr + type;
+        }
+        ctxO.strokeStyle = "rgba(0,255,200,0.5)"; ctxO.beginPath(); ctxO.moveTo(sx,sy); ctxO.lineTo(mx,my); ctxO.stroke();
+    }
+
+    // PANEL 2: ANALEMA
+    const cxA = cAnale.width/2, cyA = cAnale.height/2;
+    ctxA.beginPath(); ctxA.strokeStyle = "rgba(0,255,200,0.2)";
+    for(let i=0; i<360; i++) {
+        let f = i/360, az = analemmaHeight(f), ax = Math.sin(2*Math.PI*f)*25;
+        ctxA.lineTo(cxA + ax, cyA - az * 200);
+    }
+    ctxA.stroke();
+    ctxA.fillStyle = "#ffcc33"; ctxA.beginPath(); ctxA.arc(cxA + Math.sin(2*Math.PI*geo.yearFrac)*25, cyA - z_s * 200, 4, 0, Math.PI*2); ctxA.fill();
+
+    // PANEL 3: FASE
+    const cxP = cPhase.width/2, cyP = cPhase.height/2, rP = 30;
+    ctxP.fillStyle = "#eee";
+    let s = Math.cos(geo.synPhase * 2 * Math.PI);
+    for(let i = -rP; i < rP; i++) {
+        let h = Math.sqrt(rP*rP - i*i), x2 = i * s;
+        if (geo.synPhase < 0.5) { if (i > x2) ctxP.fillRect(cxP + x2, cyP - h, i - x2, h * 2); }
+        else { if (i < x2) ctxP.fillRect(cxP + i, cyP - h, x2 - i, h * 2); }
+    }
+
+    requestAnimationFrame(draw);
+}
+
+function downloadCSV() {
+    let csv = "FECHA,TIPO,SUBTIPO\n";
+    eclipseList.forEach(e => { csv += `${e.date},${e.type},${e.subtype}\n`; });
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.setAttribute('hidden', '');
+    a.setAttribute('href', url);
+    a.setAttribute('download', 'eclipses_tesis.csv');
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+}
+
+draw();
+</script>
+</body>
+</html>
