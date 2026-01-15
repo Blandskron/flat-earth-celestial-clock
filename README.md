@@ -1,8 +1,3 @@
-![Image](https://m.media-amazon.com/images/I/61405s43vNL.jpg)
-![Image](https://upload.wikimedia.org/wikipedia/commons/thumb/a/a6/Analemma_Earth.png/500px-Analemma_Earth.png)
-![Image](https://www.simonhanmer52.ca/uploads/8/3/4/8/83482100/slide07_28_orig.jpg)
-![Image](https://m.media-amazon.com/images/I/61NLn8W18OL._AC_UF894%2C1000_QL80_.jpg)
-
 # Flat Earth Celestial Clock
 
 **A geometric–temporal eclipse prediction model on a stationary flat Earth  
