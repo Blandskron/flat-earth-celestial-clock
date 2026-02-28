@@ -1,3 +1,15 @@
+"""Descarga y normalización de catálogos de eclipses NASA/GSFC.
+
+Objetivo:
+- Obtener tablas de décadas solares y lunares.
+- Estandarizar columnas mínimas (fecha, tipo y clase solar/lunar).
+- Filtrar por el rango temporal de interés del proyecto.
+
+Nota:
+La línea `!pip install ...` se mantiene por compatibilidad con cuadernos
+Jupyter; al ejecutarse como script de Python puro puede comentarse.
+"""
+
 !pip install astropy jplephem numpy
 
 import datetime as dt
@@ -20,7 +32,7 @@ LUNAR_DECADES = [
 ]
 
 def fetch_tables(url: str) -> list[pd.DataFrame]:
-    """Download an HTML page and return all tables."""
+    """Descarga una página HTML y devuelve todas sus tablas detectadas."""
     r = requests.get(url, timeout=30)
     r.raise_for_status()
     html = r.text
@@ -29,8 +41,8 @@ def fetch_tables(url: str) -> list[pd.DataFrame]:
 
 def parse_date_cell(cell) -> dt.date | None:
     """
-    NASA tables have 'Calendar Date' like '2026 Feb 17' or similar.
-    We extract YYYY Mon DD robustly.
+    Las tablas NASA publican fechas estilo `2026 Feb 17`.
+    Esta función extrae la fecha con una expresión regular tolerante.
     """
     s = str(cell).strip()
     m = re.search(r"(\d{4})\s+([A-Za-z]{3})\s+(\d{1,2})", s)
@@ -46,8 +58,8 @@ def parse_date_cell(cell) -> dt.date | None:
 
 def normalize_eclipse_table(df: pd.DataFrame, eclipse_kind: str) -> pd.DataFrame:
     """
-    Try to find the date column and type column; keep only what we need.
-    Works for both Solar and Lunar decade summary tables.
+    Normaliza una tabla cruda a un esquema compacto: date/type/kind.
+    Funciona para tablas resumen de décadas solares y lunares.
     """
     # Best guess: first column is Calendar Date on both decade pages
     date_col = df.columns[0]
@@ -76,6 +88,10 @@ def normalize_eclipse_table(df: pd.DataFrame, eclipse_kind: str) -> pd.DataFrame
     return out
 
 def load_eclipses(urls: list[str], kind: str) -> pd.DataFrame:
+    """Procesa varias URLs de décadas y concatena sus resultados.
+
+    Se selecciona la tabla más probable por estructura y presencia de fechas.
+    """
     rows = []
     for url in urls:
         tables = fetch_tables(url)
@@ -98,6 +114,7 @@ def load_eclipses(urls: list[str], kind: str) -> pd.DataFrame:
     return pd.concat(rows, ignore_index=True)
 
 def main():
+    """Punto de entrada: carga, filtra y muestra eclipses en pantalla."""
     solar = load_eclipses(SOLAR_DECADES, "solar")
     lunar = load_eclipses(LUNAR_DECADES, "lunar")
 

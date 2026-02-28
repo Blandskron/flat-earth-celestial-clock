@@ -45,17 +45,19 @@ These hypotheses define a **self-consistent mathematical framework**, evaluated 
 
 The Earth is projected using an **azimuthal equidistant projection** centered on the pole of the plane.
 
-Each geographic coordinate \((\lambda, \varphi)\) is mapped to polar coordinates:
+Each geographic coordinate `(lambda, phi)` is mapped to polar coordinates:
 
-- **Angular position**  
-  \[
-  \theta = -\lambda - \frac{\pi}{2}
-  \]
+- **Angular position**
 
-- **Radial distance**  
-  \[
-  r = R \cdot \frac{90^\circ - \varphi}{180^\circ}
-  \]
+  ```text
+  theta = -lambda - (pi / 2)
+  ```
+
+- **Radial distance**
+
+  ```text
+  r = R * ((90° - phi) / 180°)
+  ```
 
 This preserves radial distance and allows the superposition of a **24-hour temporal dial**.
 
@@ -89,19 +91,19 @@ System B is a **reading system**, not a time modification.
 
 The solar analemma is modeled as a **harmonic function of annual phase**:
 
-\[
-Z_\odot(f) =
-a_1 \sin(2\pi f) +
-a_2 \sin(4\pi f) +
-a_3 \sin(6\pi f)
-\]
+```text
+Z_sun(f) =
+    a1 * sin(2*pi*f)
+  + a2 * sin(4*pi*f)
+  + a3 * sin(6*pi*f)
+```
 
-Where \(f\) is the fractional solar year.
+Where `f` is the fractional solar year.
 
 - The fundamental term captures annual variation.
 - Higher harmonics correct asymmetry.
-- **Geometric meaning**:  
-  \(Z_\odot\) modulates the **effective solar radius** above the plane.
+- **Geometric meaning**:
+  `Z_sun` modulates the **effective solar radius** above the plane.
 
 This transforms the analemma from a descriptive artifact into an **active geometric parameter**.
 
@@ -111,14 +113,14 @@ This transforms the analemma from a descriptive artifact into an **active geomet
 
 The synodic phase is defined as:
 
-\[
-\phi = \operatorname{frac}\!\left(\frac{t - t_{\text{ref}}}{M}\right)
-\]
+```text
+phi = frac((t - t_ref) / M)
+```
 
-Where \(M\) is the synodic month.
+Where `M` is the synodic month.
 
-- \(\phi \approx 0\): New Moon  
-- \(\phi \approx 0.5\): Full Moon
+- `phi ≈ 0`: New Moon
+- `phi ≈ 0.5`: Full Moon
 
 In the planar model, the Moon’s angular separation from the Sun is **phase-determined**, not orbit-determined.
 
@@ -128,17 +130,17 @@ In the planar model, the Moon’s angular separation from the Sun is **phase-det
 
 Instead of tilted orbital planes, the model introduces an **effective draconic year** that defines **temporal nodal windows**:
 
-\[
-\psi = \operatorname{frac}\!\left(\frac{t - t_{\text{ref}}}{E}\right)
-\]
+```text
+psi = frac((t - t_ref) / E)
+```
 
 Distance to node:
 
-\[
-d_{\text{node}} = \min(\psi,\;1-\psi,\;|\psi-0.5|)
-\]
+```text
+d_node = min(psi, 1 - psi, abs(psi - 0.5))
+```
 
-Only when \(d_{\text{node}}\) falls below a defined threshold can eclipses occur.
+Only when `d_node` falls below a defined threshold can eclipses occur.
 
 This **translates inclination into time**, preserving planar geometry.
 
@@ -150,7 +152,7 @@ This **translates inclination into time**, preserving planar geometry.
 
 Conditions:
 
-1. New Moon (\(\phi \approx 0\))
+1. New Moon (`phi ≈ 0`)
 2. Within nodal season
 3. Relative altitude geometry permits occultation
 
@@ -164,7 +166,7 @@ Classification by nodal proximity:
 
 Conditions:
 
-1. Full Moon (\(\phi \approx 0.5\))
+1. Full Moon (`phi ≈ 0.5`)
 2. Within nodal season
 3. Exact angular opposition
 
@@ -219,3 +221,18 @@ a deterministic mathematical machine where **time governs form**.
 
 **Keywords**  
 flat earth, analemma, synodic phase, draconic year, eclipses, temporal geometry, celestial clock
+
+## 10. Notas de implementación del código
+
+Para facilitar mantenimiento y auditoría, el repositorio incluye documentación
+en línea en los módulos de simulación (`notebook/*.py`) y en los motores de
+visualización (`index.html` y `page/*.html`).
+
+Cada bloque principal documenta:
+
+- propósito matemático o visual,
+- entradas/salidas esperadas,
+- relación con constantes del modelo temporal.
+
+Además, se verificó el contenido del proyecto para confirmar que no existan
+emojis en código ni en textos de interfaz.
