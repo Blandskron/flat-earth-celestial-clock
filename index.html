@@ -6,6 +6,11 @@
          <!-- Google tag (gtag.js) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-XS616SHMD7"></script>
     <script>
+/**
+ * Motor de visualización celeste.
+ * Este bloque está documentado por secciones: inicialización, geometría,
+ * renderizado y exportación de datos.
+ */
       window.dataLayer = window.dataLayer || [];
       function gtag(){dataLayer.push(arguments);}
       gtag('js', new Date());
@@ -129,6 +134,7 @@ async function loadGeoData() {
     worldData = await res.json();
 }
 
+/** Ajusta los canvas al tamaño del contenedor actual. */
 function resize() {
     [mCanvas, uCanvas, cAnale, cPhase].forEach(c => {
         c.width = c.parentElement.clientWidth;
@@ -136,7 +142,8 @@ function resize() {
     });
 }
 
-function project(lon, lat, radius) {
+/** Proyección acimutal-equidistante para coordenadas geográficas. */
+    function project(lon, lat, radius) {
     const angle = (-lon * Math.PI / 180) - Math.PI / 2;
     const dist = ((90 - lat) / 180) * radius;
     return { x: mCanvas.width / 2 + Math.cos(angle) * dist, y: mCanvas.height / 2 + Math.sin(angle) * dist };
@@ -146,6 +153,7 @@ function analemmaHeight(yearFrac) {
     return (0.25 * Math.sin(2 * Math.PI * yearFrac) + 0.08 * Math.sin(4 * Math.PI * yearFrac));
 }
 
+/** Bucle principal de renderizado y actualización temporal. */
 function draw() {
     mCtx.clearRect(0,0,mCanvas.width, mCanvas.height);
     uCtx.clearRect(0,0,uCanvas.width, uCanvas.height);

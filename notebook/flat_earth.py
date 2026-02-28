@@ -1,3 +1,16 @@
+"""Modelo base de predicción de eclipses para el reloj celeste plano.
+
+Este script recorre un rango temporal fijo y detecta eventos de eclipse usando
+una geometría puramente temporal:
+
+1. fase sinódica (alineación Sol-Luna),
+2. cercanía a temporada nodal,
+3. clasificación por distancia nodal.
+
+La salida es una tabla cronológica simple apta para comparación con catálogos
+externos o con visualizaciones en HTML del repositorio.
+"""
+
 import math
 from datetime import datetime, timedelta
 
@@ -31,15 +44,26 @@ EPOCH    = datetime(2000, 1, 1, 12, 0)
 # ============================================================
 # MODELO FÍSICO INTEGRADO (Analema + Nodos)
 # ============================================================
-def frac(x): return x - math.floor(x)
+def frac(x):
+    """Devuelve la parte fraccional de un número real."""
+    return x - math.floor(x)
 
 def analemma_height(year_frac):
-    """Tu modelo de 3 armónicos para la declinación solar"""
+    """Calcula la altura relativa del Sol (offset Z) en el año fraccional.
+
+    Args:
+        year_frac: Fracción de año en rango [0, 1).
+
+    Returns:
+        Valor adimensional que modula la distancia radial efectiva del Sol en
+        la representación plana.
+    """
     return (0.25 * math.sin(2 * math.pi * year_frac) +
             0.08 * math.sin(4 * math.pi * year_frac) +
             0.03 * math.sin(6 * math.pi * year_frac))
 
 def get_geometry(t):
+    """Calcula fase sinódica, distancia nodal y fracción anual para `t`."""
     d_ref = (t - REF_DATE).total_seconds() / 86400.0
     d_ep  = (t - EPOCH).total_seconds() / 86400.0
 
@@ -53,6 +77,7 @@ def get_geometry(t):
     return syn_phase, dist_node, year_frac
 
 def detect_eclipse(t):
+    """Determina si en `t` existe eclipse y su subtipo estimado."""
     syn_phase, dist_node, year_frac = get_geometry(t)
 
     # FILTRO DE FASE CRÍTICA: La llave que detiene los falsos positivos
@@ -78,6 +103,7 @@ def detect_eclipse(t):
 # SIMULACIÓN Y BÚSQUEDA DE MÁXIMOS
 # ============================================================
 def refine_peak(t0):
+    """Busca el mínimo de distancia nodal en una ventana local de +/-12h."""
     best_t = t0
     _, min_node, _ = get_geometry(t0)
     for h in range(-12, 13):
@@ -88,11 +114,13 @@ def refine_peak(t0):
             best_t = tt
     return best_t
 
+# Lista de resultados finales: (fecha, tipo, subtipo)
 results = []
 t = START_DATE
 cooldown = timedelta(days=10)
 last_event = None
 
+# Bucle principal: barrido horario en todo el intervalo de estudio.
 while t < END_DATE:
     res = detect_eclipse(t)
     if res:

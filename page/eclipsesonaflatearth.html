@@ -57,9 +57,15 @@
 </div>
 
 <script>
+/**
+ * Motor de visualización celeste.
+ * Este bloque está documentado por secciones: inicialización, geometría,
+ * renderizado y exportación de datos.
+ */
 const cOrbit = document.getElementById('canvasOrbit'), cAnale = document.getElementById('canvasAnalemma'), cPhase = document.getElementById('canvasMoonPhase');
 const ctxO = cOrbit.getContext('2d'), ctxA = cAnale.getContext('2d'), ctxP = cPhase.getContext('2d');
 
+/** Ajusta los canvas al tamaño del contenedor actual. */
 function resize() {
     [cOrbit, cAnale, cPhase].forEach(c => {
         c.width = c.parentElement.clientWidth;
@@ -82,6 +88,7 @@ function analemmaHeight(yearFrac) {
     return (0.25 * Math.sin(2 * Math.PI * yearFrac) + 0.08 * Math.sin(4 * Math.PI * yearFrac) + 0.03 * Math.sin(6 * Math.PI * yearFrac));
 }
 
+/** Bucle principal de renderizado y actualización temporal. */
 function draw() {
     [ctxO, ctxA, ctxP].forEach(ctx => { ctx.fillStyle = "black"; ctx.fillRect(0,0,ctx.canvas.width, ctx.canvas.height); });
 
@@ -173,6 +180,7 @@ function draw() {
     requestAnimationFrame(draw);
 }
 
+/** Exporta el historial de eclipses detectados en CSV. */
 function downloadCSV() {
     let csv = "FECHA,TIPO,SUBTIPO,HORA_PICO_UTC\n";
     eclipseList.forEach(e => { csv += `${e.date},${e.type},${e.sub},${e.peak}\n`; });
