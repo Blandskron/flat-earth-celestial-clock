@@ -45,6 +45,11 @@
 </div>
 
 <script>
+/**
+ * Motor de visualización celeste.
+ * Este bloque está documentado por secciones: inicialización, geometría,
+ * renderizado y exportación de datos.
+ */
     const mCanvas = document.getElementById('mapCanvas');
     const uCanvas = document.getElementById('uiCanvas');
     const mCtx = mCanvas.getContext('2d');
@@ -63,6 +68,7 @@
         } catch (e) { console.error("Error cargando cartografía", e); }
     }
 
+    /** Proyección acimutal-equidistante para coordenadas geográficas. */
     function project(lon, lat, radius) {
         // SENTIDO HORARIO REAL: Invertimos longitud para que coincida con las manecillas
         const clockwiseLon = -lon; 

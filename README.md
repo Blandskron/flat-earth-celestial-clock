@@ -219,3 +219,18 @@ a deterministic mathematical machine where **time governs form**.
 
 **Keywords**  
 flat earth, analemma, synodic phase, draconic year, eclipses, temporal geometry, celestial clock
+
+## 10. Notas de implementación del código
+
+Para facilitar mantenimiento y auditoría, el repositorio incluye documentación
+en línea en los módulos de simulación (`notebook/*.py`) y en los motores de
+visualización (`index.html` y `page/*.html`).
+
+Cada bloque principal documenta:
+
+- propósito matemático o visual,
+- entradas/salidas esperadas,
+- relación con constantes del modelo temporal.
+
+Además, se verificó el contenido del proyecto para confirmar que no existan
+emojis en código ni en textos de interfaz.

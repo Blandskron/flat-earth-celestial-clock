@@ -1,3 +1,9 @@
+"""Simulación extendida de eclipses para el modelo plano temporal.
+
+Este archivo replica la lógica de detección principal con comentarios de apoyo
+para auditoría matemática y trazabilidad de parámetros.
+"""
+
 import math
 from datetime import datetime, timedelta
 
@@ -32,15 +38,18 @@ EPOCH    = datetime(2000, 1, 1, 12, 0)
 # UTILIDADES
 # ============================================================
 def frac(x):
+    """Retorna la parte fraccional de un número."""
     return x - math.floor(x)
 
 def days_between(a, b):
+    """Calcula diferencia temporal en días entre dos datetimes."""
     return (a - b).total_seconds() / 86400.0
 
 # ============================================================
 # ANALÉMA SOLAR (12 PUNTOS / 3 ARMÓNICOS)
 # ============================================================
 def analemma_height(year_frac):
+    """Modela la altura relativa solar mediante tres armónicos."""
     return (
         0.25 * math.sin(2 * math.pi * year_frac) +
         0.08 * math.sin(4 * math.pi * year_frac) +
@@ -51,6 +60,7 @@ def analemma_height(year_frac):
 # GEOMETRÍA TEMPORAL DEL MODELO
 # ============================================================
 def get_geometry(t):
+    """Deriva fase sinódica, distancia nodal y fracción anual."""
     d_ref = days_between(t, REF_DATE)
     d_ep  = days_between(t, EPOCH)
 
@@ -74,6 +84,7 @@ def get_geometry(t):
 # DETECCIÓN DE ECLIPSES
 # ============================================================
 def detect_eclipse(t):
+    """Clasifica eclipses solares/lunares si se cumplen los umbrales."""
     syn_phase, dist_node, year_frac = get_geometry(t)
 
     # Filtros de fase
@@ -113,6 +124,7 @@ def detect_eclipse(t):
 # REFINAMIENTO TEMPORAL DEL EVENTO
 # ============================================================
 def refine_peak(t0):
+    """Refina la hora del evento buscando mínimo nodal local."""
     best_t = t0
     _, min_node, _ = get_geometry(t0)
 

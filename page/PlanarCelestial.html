@@ -6,6 +6,11 @@
      <!-- Google tag (gtag.js) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-XS616SHMD7"></script>
     <script>
+/**
+ * Motor de visualización celeste.
+ * Este bloque está documentado por secciones: inicialización, geometría,
+ * renderizado y exportación de datos.
+ */
       window.dataLayer = window.dataLayer || [];
       function gtag(){dataLayer.push(arguments);}
       gtag('js', new Date());
@@ -80,6 +85,7 @@
 const cOrbit = document.getElementById('canvasOrbit'), cAnale = document.getElementById('canvasAnalemma'), cPhase = document.getElementById('canvasMoonPhase');
 const ctxO = cOrbit.getContext('2d'), ctxA = cAnale.getContext('2d'), ctxP = cPhase.getContext('2d');
 
+/** Ajusta los canvas al tamaño del contenedor actual. */
 function resize() {
     [cOrbit, cAnale, cPhase].forEach(c => {
         c.width = c.parentElement.clientWidth;
@@ -128,6 +134,7 @@ function getGeometry(dSinceStart) {
     return { synPhase, distNode, yearFrac };
 }
 
+/** Bucle principal de renderizado y actualización temporal. */
 function draw() {
     [ctxO, ctxA, ctxP].forEach(ctx => { ctx.fillStyle = "black"; ctx.fillRect(0,0,ctx.canvas.width, ctx.canvas.height); });
 
@@ -196,6 +203,7 @@ function draw() {
     requestAnimationFrame(draw);
 }
 
+/** Exporta el historial de eclipses detectados en CSV. */
 function downloadCSV() {
     let csv = "FECHA,TIPO,SUBTIPO\n";
     eclipseList.forEach(e => { csv += `${e.date},${e.type},${e.subtype}\n`; });
